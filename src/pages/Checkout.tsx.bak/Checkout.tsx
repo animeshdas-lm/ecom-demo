@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
@@ -12,7 +13,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
-import mixpanel from 'mixpanel-browser';
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -45,42 +45,12 @@ export const Checkout: React.FC = () => {
 
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Tracking code for checkout_started event
-    const cartId = items.map(item => item.product.id).sort().join('-');
-    const numItems = items.reduce((sum, item) => sum + item.quantity, 0);
-    mixpanel.track('checkout_started', {
-      cart_id: cartId,
-      num_items: numItems,
-    });
-
-    // Tracking code for address_info_submitted event
-    const addressId = `${shippingData.address}-${shippingData.city}-${shippingData.postalCode}`;
-    // Assuming if the address field is not empty, it's a new address for this submission
-    const isNewAddress = shippingData.address !== ''; 
-    mixpanel.track('address_info_submitted', {
-      address_id: addressId,
-      is_new_address: isNewAddress,
-    });
-
-    // Tracking code for shipping_method_selected event
-    const selectedShippingMethod = shipping === 0 ? 'Free Shipping' : 'Standard Shipping';
-    mixpanel.track('shipping_method_selected', {
-      shipping_method: selectedShippingMethod,
-      shipping_cost: shipping,
-    });
-
     setStep(2);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
-    // Tracking code for payment_info_submitted event
-    mixpanel.track('payment_info_submitted', {
-      payment_method: 'credit_card', // Inferred from the payment form fields (cardNumber, expiryDate, cvv)
-      payment_gateway: 'simulated_payment', // Inferred from the use of mockApiService for payment processing
-    });
 
     try {
       // Simulate payment processing
@@ -90,12 +60,6 @@ export const Checkout: React.FC = () => {
         items,
         total,
         shippingAddress: shippingData,
-      });
-
-      // Tracking code for order_placed event
-      mixpanel.track('order_placed', {
-        order_id: order.id,
-        total_amount: total,
       });
 
       clearCart();
