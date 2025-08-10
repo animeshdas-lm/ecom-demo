@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -12,7 +13,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
-import mixpanel from 'mixpanel-browser';
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -43,54 +43,8 @@ export const Checkout: React.FC = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
-  // Track "Checkout Started" event when the component mounts and cart is not empty
-  useEffect(() => {
-    if (items.length > 0) {
-      const cartId = user?.id ? `user_cart_${user.id}` : `guest_cart_${Date.now()}`;
-      const userId = user?.id || 'guest';
-
-      mixpanel.track('Checkout Started', {
-        cart_id: cartId,
-        user_id: userId,
-        total_items: items.length,
-        total_price: total,
-      });
-    }
-  }, [items.length, user, total]);
-
-  // Track "Checkout Step Viewed" event when the step changes
-  useEffect(() => {
-    const userId = user?.id || 'guest';
-    // Generate cartId consistently with how it's done for "Checkout Started"
-    // Note: For guest users, Date.now() will generate a new ID on each step change,
-    // which might not link steps to the *same* initial cart session.
-    // However, given the strict "do not modify other parts" rule,
-    // we replicate the existing pattern for cartId generation.
-    const cartId = user?.id ? `user_cart_${user.id}` : `guest_cart_${Date.now()}`;
-
-    let stepName = '';
-    if (step === 1) {
-      stepName = 'Shipping Information';
-    } else if (step === 2) {
-      stepName = 'Payment Information';
-    }
-
-    if (stepName) { // Only track if a valid step name is determined
-      mixpanel.track('Checkout Step Viewed', {
-        step_name: stepName,
-        user_id: userId,
-        cart_id: cartId,
-      });
-    }
-  }, [step, user]); // Depend on step and user to re-track when step changes or user info is available
-
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Mixpanel Tracking: Address Information Entered
-    mixpanel.track('Address Information Entered', {
-      address_fields: Object.keys(shippingData),
-      user_id: user?.id || 'guest',
-    });
     setStep(2);
   };
 
@@ -99,12 +53,6 @@ export const Checkout: React.FC = () => {
     setLoading(true);
 
     try {
-      // Mixpanel Tracking: Payment Information Entered
-      mixpanel.track('Payment Information Entered', {
-        payment_method: 'Credit Card', // Assuming credit card as the only payment method from the form
-        user_id: user?.id || 'guest',
-      });
-
       // Simulate payment processing
       await new Promise(resolve => setTimeout(resolve, 2000));
       
@@ -112,13 +60,6 @@ export const Checkout: React.FC = () => {
         items,
         total,
         shippingAddress: shippingData,
-      });
-
-      // Mixpanel Tracking: Order Placed
-      mixpanel.track('Order Placed', {
-        order_id: order.id,
-        total_amount: total,
-        user_id: user?.id || 'guest',
       });
 
       clearCart();
@@ -136,17 +77,6 @@ export const Checkout: React.FC = () => {
         title: "Payment failed",
         description: "Please check your payment details and try again.",
         variant: "destructive",
-      });
-
-      // Mixpanel Tracking: Checkout Failed
-      const userId = user?.id || 'guest';
-      const cartId = user?.id ? `user_cart_${user.id}` : `guest_cart_${Date.now()}`;
-      const failureReason = error instanceof Error ? error.message : "Payment processing error: Unknown reason";
-
-      mixpanel.track('Checkout Failed', {
-        failure_reason: failureReason,
-        user_id: userId,
-        cart_id: cartId,
       });
     } finally {
       setLoading(false);
