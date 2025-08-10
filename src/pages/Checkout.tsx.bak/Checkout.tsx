@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -12,7 +13,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
-import mixpanel from 'mixpanel-browser';
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -20,39 +20,6 @@ export const Checkout: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   
-  const orderPlacedRef = useRef(false); // To track if the order was successfully placed
-  const currentStepRef = useRef(1); // To track the current step for abandonment
-
-  // Effect to keep currentStepRef updated with the latest step
-  useEffect(() => {
-    currentStepRef.current = step;
-  }, [step]);
-
-  // Mixpanel tracking for checkout_started event and checkout_abandoned cleanup
-  useEffect(() => {
-    if (mixpanel) {
-      const userId = user?.id; // user_id will be undefined if no user is logged in
-      // For cart_id, use user's ID if logged in, otherwise generate a unique ID for anonymous carts
-      const cartId = userId || `anonymous_cart_${Date.now()}`; 
-
-      mixpanel.track('checkout_started', {
-        cart_id: cartId,
-        user_id: userId,
-      });
-
-      // Cleanup function to track checkout_abandoned when the component unmounts
-      return () => {
-        // Only track checkout_abandoned if the order was NOT successfully placed
-        if (!orderPlacedRef.current) {
-          mixpanel.track('checkout_abandoned', {
-            cart_id: cartId, // Use the same cart_id as checkout_started
-            step_abandoned: currentStepRef.current, // Use the latest step the user was on
-          });
-        }
-      };
-    }
-  }, []); // Empty dependency array ensures this runs only once on component mount/unmount
-
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [shippingData, setShippingData] = useState({
@@ -76,52 +43,13 @@ export const Checkout: React.FC = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
-  // Mixpanel tracking for coupon_applied event (interpreted as free shipping)
-  useEffect(() => {
-    if (mixpanel && shipping === 0) {
-      // This tracks when free shipping is applied (shipping cost becomes 0).
-      // It will fire when 'shipping' changes to 0. If 'shipping' remains 0 across re-renders,
-      // this effect will not re-run unless 'shipping' changes to a non-zero value and then back to 0.
-      mixpanel.track('coupon_applied', {
-        coupon_code: 'FREESHIPPINGOVER50', // Smartly addressed from the shipping logic
-        discount_amount: 9.99, // The amount saved by free shipping
-      });
-    }
-  }, [shipping, mixpanel]);
-
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (mixpanel) {
-      const addressId = `${shippingData.address}, ${shippingData.city}, ${shippingData.postalCode}, ${shippingData.country}`;
-      const inferredShippingMethod = shipping === 0 ? 'Free Shipping' : 'Standard Shipping';
-
-      mixpanel.track('shipping_info_submitted', {
-        address_id: addressId,
-        shipping_method: inferredShippingMethod,
-      });
-
-      // Add tracking for shipping_method_selected event
-      mixpanel.track('shipping_method_selected', {
-        shipping_method: inferredShippingMethod,
-        shipping_cost: shipping,
-      });
-    }
-
     setStep(2);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Mixpanel tracking for payment_info_submitted event
-    if (mixpanel) {
-      mixpanel.track('payment_info_submitted', {
-        payment_method: 'Credit Card',
-        payment_gateway: 'Stripe (Simulated)', 
-      });
-    }
-
     setLoading(true);
 
     try {
@@ -134,16 +62,7 @@ export const Checkout: React.FC = () => {
         shippingAddress: shippingData,
       });
 
-      // Mixpanel tracking for order_placed event
-      if (mixpanel) {
-        mixpanel.track('order_placed', {
-          order_id: order.id,
-          total_amount: total,
-        });
-      }
-
       clearCart();
-      orderPlacedRef.current = true; // Set the ref to true indicating order was placed
       
       toast({
         title: "Order placed successfully!",
@@ -257,7 +176,7 @@ export const Checkout: React.FC = () => {
                         id="address"
                         value={shippingData.address}
                         onChange={(e) => setShippingData({ ...shippingData, address: e.target.value })}
-                          required
+                        required
                       />
                     </div>
 
