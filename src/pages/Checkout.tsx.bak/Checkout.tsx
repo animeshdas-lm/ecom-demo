@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -12,7 +13,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
-import mixpanel from 'mixpanel-browser';
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -22,7 +22,6 @@ export const Checkout: React.FC = () => {
   
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [checkoutCompleted, setCheckoutCompleted] = useState(false); // New state to track if checkout was successfully completed
   const [shippingData, setShippingData] = useState({
     fullName: user?.name || '',
     email: user?.email || '',
@@ -44,93 +43,13 @@ export const Checkout: React.FC = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
-  // Tracking code for "Checkout Started" and "Checkout Abandoned" events
-  useEffect(() => {
-    // "Checkout Started" event
-    // Ensure there are items in the cart before tracking "Checkout Started"
-    // The component already redirects if items.length === 0, so this check is mostly for clarity.
-    if (items.length > 0) {
-      const cart_id = items.map(item => item.product.id).sort().join('_');
-      const user_id = user?.id || 'guest_user'; // Use 'guest_user' if user ID is not available
-
-      mixpanel.track('Checkout Started', {
-        cart_id: cart_id,
-        user_id: user_id,
-        total_price: total,
-        item_count: items.length,
-        product_ids: items.map(item => item.product.id),
-        product_names: items.map(item => item.product.name),
-      });
-    }
-
-    // "Checkout Abandoned" event (cleanup function)
-    return () => {
-      // This cleanup function runs when the component unmounts or when its dependencies change.
-      // We want to track abandonment only if the checkout was NOT completed successfully
-      // and if there were items in the cart when the component was active.
-      // The `items.length > 0` check ensures we don't fire if the cart was already empty
-      // (e.g., initial render redirect or after successful completion).
-      if (!checkoutCompleted && items.length > 0) {
-        const cart_id = items.map(item => item.product.id).sort().join('_');
-        
-        // Determine the last page visited based on the current step state
-        let last_page_visited = 'Unknown';
-        if (step === 1) {
-          last_page_visited = 'Shipping Information';
-        } else if (step === 2) {
-          last_page_visited = 'Payment Information';
-        }
-
-        mixpanel.track('Checkout Abandoned', {
-          cart_id: cart_id,
-          last_page_visited: last_page_visited,
-          current_step: step, // Add current step for more context
-          item_count: items.length,
-          total_price: total,
-        });
-      }
-    };
-  }, [items, user, total, step, checkoutCompleted]); // Dependencies for both effect and cleanup
-
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Mixpanel tracking for "Shipping Info Entered"
-    mixpanel.track('Shipping Info Entered', {
-      shipping_address: `${shippingData.address}, ${shippingData.city}, ${shippingData.postalCode}, ${shippingData.country}`,
-      shipping_method: shipping === 0 ? 'Free Shipping' : 'Standard Shipping',
-    });
-    // NEW TRACKING CODE: Shipping Option Selected
-    mixpanel.track('Shipping Option Selected', {
-      shipping_method: shipping === 0 ? 'Free Shipping' : 'Standard Shipping',
-      shipping_cost: shipping,
-    });
-    // Tracking code for "Order Review Started"
-    mixpanel.track('Order Review Started', {
-      order_total: total,
-      discount_applied: shipping === 0, // True if free shipping was applied
-    });
-
-    // Tracking code for "Promo Code Applied" event
-    // This is smartly addressed by checking if the free shipping discount was applied.
-    if (shipping === 0) {
-      mixpanel.track('Promo Code Applied', {
-        promo_code: 'FREESHIPPING50', // Inferred promo code for free shipping over $50
-        discount_amount: 9.99, // The amount saved due to free shipping
-      });
-    }
-
     setStep(2);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Mixpanel tracking for "Payment Info Entered"
-    mixpanel.track('Payment Info Entered', {
-      payment_method: 'Credit Card', // Inferred from the paymentData state structure (cardNumber, expiryDate, cvv)
-      payment_gateway: 'Simulated Gateway', // Inferred from the use of mockApiService for payment processing
-    });
-
     setLoading(true);
 
     try {
@@ -141,16 +60,6 @@ export const Checkout: React.FC = () => {
         items,
         total,
         shippingAddress: shippingData,
-      });
-
-      // Set checkoutCompleted to true before clearing cart and navigating
-      setCheckoutCompleted(true); // Mark checkout as completed successfully
-
-      // Tracking code for "Order Placed" event
-      mixpanel.track('Order Placed', {
-        order_id: order.id,
-        order_total: total,
-        payment_status: 'Success'
       });
 
       clearCart();
