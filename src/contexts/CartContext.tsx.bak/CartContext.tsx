@@ -1,7 +1,7 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Product } from '../types';
 import { useToast } from '../hooks/use-toast';
-import mixpanel from 'mixpanel-browser';
 
 interface CartContextType {
   items: CartItem[];
@@ -60,33 +60,19 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return [...prev, { product, quantity }];
       }
     });
-    mixpanel.track('product_added_to_cart', {
-      product_id: product.id,
-      quantity: quantity,
-      price: product.price
-    });
   };
 
   const removeFromCart = (productId: number) => {
-    const itemRemoved = items.find(item => item.product.id === productId);
-
     setItems(prev => {
-      if (itemRemoved) {
+      const item = prev.find(item => item.product.id === productId);
+      if (item) {
         toast({
           title: "Removed from cart",
-          description: `${itemRemoved.product.name} has been removed.`,
+          description: `${item.product.name} has been removed.`,
         });
       }
       return prev.filter(item => item.product.id !== productId);
     });
-
-    if (itemRemoved) {
-      mixpanel.track('product_removed_from_cart', {
-        product_id: itemRemoved.product.id,
-        quantity: itemRemoved.quantity,
-        price: itemRemoved.product.price
-      });
-    }
   };
 
   const updateQuantity = (productId: number, quantity: number) => {
