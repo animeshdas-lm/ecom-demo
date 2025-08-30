@@ -1,6 +1,6 @@
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import mixpanel from 'mixpanel-browser';
 import { CheckCircle, Package, Truck, Home } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -9,7 +9,20 @@ export const OrderConfirmation: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   
-  const { orderId, orderTotal } = location.state || {};
+  // Smartly address shipping_method and payment_type from location.state
+  // Assuming these might be passed in location.state from the previous page (e.g., checkout)
+  const { orderId, orderTotal, shippingMethod, paymentType } = location.state || {};
+
+  useEffect(() => {
+    // Track the event when the component mounts
+    // Ensure mixpanel is available and orderId exists before tracking
+    if (mixpanel && orderId) {
+      mixpanel.track("Order Review Page Viewed", {
+        shipping_method: shippingMethod || 'Unknown', // Default to 'Unknown' if not provided
+        payment_type: paymentType || 'Unknown',     // Default to 'Unknown' if not provided
+      });
+    }
+  }, []); // Empty dependency array ensures this effect runs only once on component mount
 
   if (!orderId) {
     navigate('/');

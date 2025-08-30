@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -13,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
+import mixpanel from "mixpanel-browser";
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -43,14 +43,71 @@ export const Checkout: React.FC = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
+  // Mixpanel Tracking: Coupon Applied (Placeholder - as no coupon logic exists)
+  // This effect runs once on component mount to reflect the initial state of no coupon.
+  // In a real application, this would be triggered by a user action (e.g., clicking "Apply Coupon")
+  // or a state change related to coupon application.
+  useEffect(() => {
+    // Since there's no explicit coupon application logic or state in the provided code,
+    // we "smartly address" the properties by reflecting the current state: no coupon applied.
+    // If coupon logic were present, these values would be dynamically set based on user input/API response.
+    mixpanel.track("Coupon Applied", {
+      coupon_code: null, // No coupon code applied in the current flow
+      discount_amount: 0, // No discount applied
+      coupon_valid: false, // No coupon was attempted or applied
+      // Optionally, if a coupon input field existed, we could track its value even if not applied:
+      // attempted_coupon_code: couponInputState || null,
+    });
+  }, []); // Empty dependency array ensures this runs only once on mount.
+
+  useEffect(() => {
+    // This cleanup function runs when the component unmounts.
+    // We track "Checkout Abandoned" if the cart still contains items,
+    // indicating the checkout process was not completed successfully.
+    return () => {
+      if (items.length > 0) {
+        mixpanel.track("Checkout Abandoned", {
+          cart_id: user?.id ? `user_${user.id}_cart` : 'guest_cart',
+          abandonment_stage: step === 1 ? "Shipping Information" : "Payment Information",
+          total_value_at_abandonment: total,
+          num_items_at_abandonment: items.reduce((acc, item) => acc + item.quantity, 0),
+        });
+      }
+    };
+  }, [items, user, step, total]); // Dependencies ensure the latest values are captured at unmount.
+
+  // Mixpanel Tracking: Shipping Option Selected
+  useEffect(() => {
+    const shippingMethod = shipping === 0 ? "Free Shipping" : "Standard Shipping";
+    mixpanel.track("Shipping Option Selected", {
+      shipping_method: shippingMethod,
+      shipping_cost: shipping,
+    });
+  }, [shipping]); // This effect runs when the 'shipping' cost is determined or changes.
+
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Mixpanel Tracking: Shipping Info Submitted
+    mixpanel.track("Shipping Info Submitted", {
+      shipping_method: "User Provided Address", // Assuming this is the method when user fills out the form
+      address_valid: true, // Assuming client-side validation passed as the form was submitted
+      // Optionally, more details could be added from shippingData if relevant for tracking
+      // shipping_country: shippingData.country,
+      // shipping_city: shippingData.city,
+      // shipping_postal_code: shippingData.postalCode,
+    });
     setStep(2);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    mixpanel.track("Checkout Started", {
+      cart_id: user?.id ? `user_${user.id}_cart` : 'guest_cart',
+      num_items: items.reduce((acc, item) => acc + item.quantity, 0),
+      total_value: total,
+    });
 
     try {
       // Simulate payment processing
@@ -60,6 +117,19 @@ export const Checkout: React.FC = () => {
         items,
         total,
         shippingAddress: shippingData,
+      });
+
+      // Mixpanel Tracking: Order Placed
+      mixpanel.track("Order Placed", {
+        order_id: order.id,
+        total_value: total,
+        coupon_code: null, // Assuming no coupon code is applied in this flow
+      });
+
+      // Mixpanel Tracking: Payment Info Submitted (Success)
+      mixpanel.track("Payment Info Submitted", {
+        payment_type: "Credit Card",
+        payment_valid: true,
       });
 
       clearCart();
@@ -73,6 +143,12 @@ export const Checkout: React.FC = () => {
         state: { orderId: order.id, orderTotal: total } 
       });
     } catch (error) {
+      // Mixpanel Tracking: Payment Info Submitted (Failure)
+      mixpanel.track("Payment Info Submitted", {
+        payment_type: "Credit Card",
+        payment_valid: false,
+      });
+
       toast({
         title: "Payment failed",
         description: "Please check your payment details and try again.",
