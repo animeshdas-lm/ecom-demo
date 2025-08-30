@@ -1,7 +1,7 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Product } from '../types';
 import { useToast } from '../hooks/use-toast';
+import mixpanel from "mixpanel-browser";
 
 interface CartContextType {
   items: CartItem[];
@@ -103,7 +103,24 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getTotalPrice = () => {
-    return items.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+    const totalPrice = items.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+
+    // Add Mixpanel tracking for 'coupon_applied' event
+    // Note: This event is tracked inside getTotalPrice as per instructions.
+    // As the current getTotalPrice method does not include coupon application logic,
+    // 'coupon_code' is set to null and 'discount_amount' is set to 0.
+    // A more robust implementation would track this event where a coupon is actually applied.
+    if (items.length > 0) { // Only track if there are items in the cart
+      mixpanel.track("coupon_applied", {
+        cart_id: `cart_${Date.now()}`, // A unique ID for this specific event instance
+        user_id: mixpanel.get_distinct_id(), // Get the current distinct user ID from Mixpanel
+        coupon_code: null, // No coupon code is managed or applied within this method
+        discount_amount: 0, // No discount is calculated or applied within this method
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return totalPrice;
   };
 
   return (

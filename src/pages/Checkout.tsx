@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -13,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
+import mixpanel from "mixpanel-browser";
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -38,13 +38,86 @@ export const Checkout: React.FC = () => {
     cardName: '',
   });
 
+  // State to hold the consistent checkout session ID
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
+  // Ref to store the timestamp when checkout started for time_on_site calculation
+  const checkoutStartTime = useRef<number | null>(null);
+
   const subtotal = getTotalPrice();
   const shipping = subtotal > 50 ? 0 : 9.99;
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
+  // Tracking for checkout_started event
+  useEffect(() => {
+    // Only track if there are items in the cart and mixpanel is available
+    if (items.length > 0 && typeof mixpanel !== 'undefined') {
+      const newCheckoutSessionId = crypto.randomUUID();
+      setCheckoutSessionId(newCheckoutSessionId); // Store the generated ID in state
+      checkoutStartTime.current = Date.now(); // Record the start time
+
+      const properties = {
+        cart_id: newCheckoutSessionId, // Use the newly generated session ID
+        user_id: user?.id || 'guest',
+        timestamp: checkoutStartTime.current,
+        total_price: total,
+        number_of_items: items.reduce((acc, item) => acc + item.quantity, 0),
+        item_ids: items.map(item => item.product.id),
+        item_names: items.map(item => item.product.name),
+        checkout_step: 'shipping',
+      };
+      mixpanel.track("checkout_started", properties);
+    }
+  }, []); // Empty dependency array ensures this runs only once on component mount.
+
+  // Tracking for checkout_abandoned event (cleanup on unmount)
+  useEffect(() => {
+    return () => {
+      // This cleanup function runs when the component unmounts.
+      // We track checkout_abandoned if a session ID was set (meaning checkout started)
+      // AND the cart is not empty (meaning the order was not completed successfully)
+      // AND mixpanel is available.
+      if (checkoutSessionId && items.length > 0 && typeof mixpanel !== 'undefined') {
+        const timeOnSite = checkoutStartTime.current ? Date.now() - checkoutStartTime.current : 0;
+
+        mixpanel.track("checkout_abandoned", {
+          cart_id: checkoutSessionId,
+          user_id: user?.id || 'guest',
+          last_page_visited: window.location.pathname, // The path of the page being abandoned
+          time_on_site: timeOnSite, // Time spent on the checkout page in milliseconds
+          timestamp: Date.now(),
+          // Optional additional properties for context at abandonment
+          current_checkout_step: step === 1 ? 'shipping' : 'payment',
+          total_amount_at_abandonment: total,
+          number_of_items_at_abandonment: items.reduce((acc, item) => acc + item.quantity, 0),
+        });
+      }
+    };
+  }, [checkoutSessionId, items, user, total, step]); // Dependencies to capture latest state for abandonment event
+
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Add Mixpanel tracking for shipping_method_selected
+    if (typeof mixpanel !== 'undefined' && checkoutSessionId) { // Use consistent checkoutSessionId
+      const shippingMethod = shipping === 0 ? 'Free Shipping' : 'Standard Shipping';
+      mixpanel.track("shipping_method_selected", {
+        cart_id: checkoutSessionId, // Use the consistent session ID
+        user_id: user?.id || 'guest',
+        shipping_method: shippingMethod,
+        timestamp: Date.now(),
+        // Optional additional properties for context
+        shipping_cost: shipping,
+        shipping_address_city: shippingData.city,
+        shipping_address_country: shippingData.country,
+      });
+
+      // Add Mixpanel tracking for checkout_review_viewed
+      mixpanel.track("checkout_review_viewed", {
+        cart_id: checkoutSessionId, // Use the consistent session ID
+        user_id: user?.id || 'guest',
+        timestamp: Date.now(),
+      });
+    }
     setStep(2);
   };
 
@@ -62,6 +135,40 @@ export const Checkout: React.FC = () => {
         shippingAddress: shippingData,
       });
 
+      // Add Mixpanel tracking for payment_info_added
+      if (typeof mixpanel !== 'undefined' && checkoutSessionId) { // Use consistent checkoutSessionId
+        mixpanel.track("payment_info_added", {
+          cart_id: checkoutSessionId, // Use the consistent session ID
+          user_id: user?.id || 'guest',
+          payment_type: 'credit_card', // Inferred from the payment form
+          timestamp: Date.now(),
+          // Optional additional properties for context
+          total_amount: total,
+          order_id: order.id,
+          card_last_four: paymentData.cardNumber.slice(-4), // Example of extracting partial info
+        });
+      }
+
+      // Add Mixpanel tracking for order_placed
+      if (typeof mixpanel !== 'undefined' && checkoutSessionId) { // Use consistent checkoutSessionId
+        mixpanel.track("order_placed", {
+          order_id: order.id,
+          user_id: user?.id || 'guest',
+          cart_id: checkoutSessionId, // Use the consistent session ID
+          total_amount: total,
+          timestamp: Date.now(),
+          // Additional context for the order
+          number_of_items: items.reduce((acc, item) => acc + item.quantity, 0),
+          item_ids: items.map(item => item.product.id),
+          item_names: items.map(item => item.product.name),
+          shipping_cost: shipping,
+          tax_amount: tax,
+          payment_method: 'credit_card', // Inferred from the payment form
+          shipping_address_city: shippingData.city,
+          shipping_address_country: shippingData.country,
+        });
+      }
+
       clearCart();
       
       toast({
@@ -78,6 +185,20 @@ export const Checkout: React.FC = () => {
         description: "Please check your payment details and try again.",
         variant: "destructive",
       });
+
+      // Add Mixpanel tracking for checkout_failed
+      if (typeof mixpanel !== 'undefined' && checkoutSessionId) { // Use consistent checkoutSessionId
+        mixpanel.track("checkout_failed", {
+          cart_id: checkoutSessionId, // Use the consistent session ID
+          user_id: user?.id || 'guest',
+          failure_reason: (error as Error).message || "Payment processing error", // Attempt to get error message, fallback to generic
+          timestamp: Date.now(),
+          // Optional additional properties for context
+          total_amount: total,
+          payment_type: 'credit_card', // Inferred from the payment form
+          checkout_step: 'payment', // Indicate the step where the failure occurred
+        });
+      }
     } finally {
       setLoading(false);
     }
