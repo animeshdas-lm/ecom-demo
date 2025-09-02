@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -13,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
+import mixpanel from "mixpanel-browser";
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -43,14 +43,101 @@ export const Checkout: React.FC = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
+  // Tracking for "Checkout Started" event
+  useEffect(() => {
+    // Ensure mixpanel is initialized and items are available before tracking
+    if (typeof mixpanel !== 'undefined' && items.length > 0) {
+      const cart_id = items.map(item => item.product.id).sort().join('-'); // Generate a simple cart ID from product IDs
+      const user_id = user?.id || mixpanel.get_distinct_id(); // Use authenticated user ID or Mixpanel's distinct ID
+      const timestamp = new Date().toISOString();
+
+      mixpanel.track("Checkout Started", {
+        cart_id: cart_id,
+        user_id: user_id,
+        timestamp: timestamp,
+        total_items: items.length,
+        total_price: total,
+      });
+    }
+  }, [items, user, total]); // Dependencies to ensure it runs when these values are stable/available
+
+  // Tracking for "Checkout Step Viewed" event
+  useEffect(() => {
+    if (typeof mixpanel !== 'undefined') {
+      const user_id = user?.id || mixpanel.get_distinct_id();
+      const timestamp = new Date().toISOString();
+      let step_name = '';
+
+      switch (step) {
+        case 1:
+          step_name = 'Shipping Information';
+          break;
+        case 2:
+          step_name = 'Payment Information';
+          break;
+        default:
+          step_name = `Unknown Step ${step}`; // Fallback for unexpected step values
+      }
+
+      mixpanel.track("Checkout Step Viewed", {
+        user_id: user_id,
+        step_name: step_name,
+        timestamp: timestamp,
+        step_number: step, // Optionally include step number for more granular analysis
+      });
+    }
+  }, [step, user]); // Dependencies: track when 'step' or 'user' changes
+
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // --- Mixpanel Tracking: Shipping Info Entered ---
+    if (typeof mixpanel !== 'undefined') {
+      const user_id = user?.id || mixpanel.get_distinct_id();
+      // Create a unique identifier for the address based on its components
+      const address_id = `${shippingData.address}-${shippingData.city}-${shippingData.postalCode}-${shippingData.country}`
+                         .replace(/[^a-zA-Z0-9]/g, '_') // Replace non-alphanumeric with underscore
+                         .toLowerCase();
+      // Determine shipping method based on the calculated shipping cost
+      const shipping_method = shipping === 0 ? 'Free Shipping' : 'Standard Shipping';
+      const timestamp = new Date().toISOString();
+
+      mixpanel.track("Shipping Info Entered", {
+        user_id: user_id,
+        address_id: address_id,
+        shipping_method: shipping_method,
+        timestamp: timestamp,
+        // Optionally, include more shipping details for richer context
+        shipping_full_name: shippingData.fullName,
+        shipping_email: shippingData.email,
+        shipping_address_line_1: shippingData.address,
+        shipping_city: shippingData.city,
+        shipping_postal_code: shippingData.postalCode,
+        shipping_country: shippingData.country,
+      });
+    }
+    // --- End Mixpanel Tracking ---
+
     setStep(2);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    // --- Mixpanel Tracking: Payment Info Entered ---
+    if (typeof mixpanel !== 'undefined') {
+      const user_id = user?.id || mixpanel.get_distinct_id();
+      const payment_method = 'Credit Card'; // Inferred from the form fields
+      const timestamp = new Date().toISOString();
+
+      mixpanel.track("Payment Info Entered", {
+        user_id: user_id,
+        payment_method: payment_method,
+        timestamp: timestamp,
+      });
+    }
+    // --- End Mixpanel Tracking ---
 
     try {
       // Simulate payment processing
@@ -78,6 +165,25 @@ export const Checkout: React.FC = () => {
         description: "Please check your payment details and try again.",
         variant: "destructive",
       });
+
+      // --- Mixpanel Tracking: Checkout Error ---
+      if (typeof mixpanel !== 'undefined') {
+        const user_id = user?.id || mixpanel.get_distinct_id();
+        const timestamp = new Date().toISOString();
+        const step_name = 'Payment Information';
+        const error_code = 'PAYMENT_PROCESSING_FAILED'; // Generic error code for payment failures
+        const error_message = (error instanceof Error) ? error.message : "Unknown payment error occurred.";
+
+        mixpanel.track("Checkout Error", {
+          user_id: user_id,
+          error_code: error_code,
+          error_message: error_message,
+          step_name: step_name,
+          timestamp: timestamp,
+        });
+      }
+      // --- End Mixpanel Tracking ---
+
     } finally {
       setLoading(false);
     }
