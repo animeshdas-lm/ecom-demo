@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -13,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
+import mixpanel from 'mixpanel-browser';
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +21,8 @@ export const Checkout: React.FC = () => {
   const { toast } = useToast();
   
   const [step, setStep] = useState(1);
+  const checkoutCompletedRef = useRef(false); // Ref to track if checkout was successfully completed
+  const stepRef = useRef(step); // Ref to hold the latest step value for cleanup
   const [loading, setLoading] = useState(false);
   const [shippingData, setShippingData] = useState({
     fullName: user?.name || '',
@@ -43,14 +45,91 @@ export const Checkout: React.FC = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
+  // Effect to keep stepRef updated with the latest step value
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  // Track checkout_started event when the component mounts and cart is not empty
+  useEffect(() => {
+    if (items.length > 0) {
+      mixpanel.track("checkout_started", {
+        cart_id: user?.id || mixpanel.get_distinct_id(), // Use user.id if logged in, else Mixpanel's anonymous distinct_id
+        user_id: user?.id, // User ID from the authentication context
+      });
+    }
+
+    // Cleanup function to track checkout_abandoned when the component unmounts
+    return () => {
+      // Only track abandonment if checkout was not completed and there were items in the cart
+      if (!checkoutCompletedRef.current && items.length > 0) {
+        mixpanel.track("Checkout Abandoned", {
+          cart_id: user?.id || mixpanel.get_distinct_id(),
+          user_id: user?.id,
+          stage_abandoned: stepRef.current === 1 ? "Shipping Information" : "Payment Information",
+          timestamp: Date.now(),
+        });
+      }
+    };
+  }, []); // Empty dependency array to ensure it runs only once on component mount and cleanup on unmount
+
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    mixpanel.track("shipping_info_entered", {
+      user_id: user?.id,
+      address_id: `${shippingData.address}-${shippingData.city}-${shippingData.postalCode}-${shippingData.country}`,
+    });
+    // Mixpanel Tracking: Shipping Info Entered
+    mixpanel.track("Shipping Info Entered", {
+      cart_id: user?.id || mixpanel.get_distinct_id(),
+      user_id: user?.id,
+      address_id: `${shippingData.address}-${shippingData.city}-${shippingData.postalCode}-${shippingData.country}`,
+      timestamp: Date.now(),
+    });
+    // Mixpanel Tracking: shipping_method_selected
+    mixpanel.track("shipping_method_selected", {
+      shipping_method: shipping === 0 ? "Free Shipping" : "Standard Shipping",
+      shipping_cost: shipping,
+      order_id: null, // Order ID is not available at this step
+      user_id: user?.id, // Include user_id for consistency
+    });
+    // Mixpanel Tracking: Shipping Method Selected
+    mixpanel.track("Shipping Method Selected", {
+      cart_id: user?.id || mixpanel.get_distinct_id(),
+      user_id: user?.id,
+      shipping_method: shipping === 0 ? "Free Shipping" : "Standard Shipping",
+      shipping_cost: shipping,
+      timestamp: Date.now(),
+    });
     setStep(2);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    // Mixpanel Tracking: payment_info_entered
+    mixpanel.track("payment_info_entered", {
+      user_id: user?.id,
+      payment_method: "Credit Card", // Assuming this form is exclusively for credit card payments
+    });
+
+    // Mixpanel Tracking: Payment Info Entered
+    mixpanel.track("Payment Info Entered", {
+      cart_id: user?.id || mixpanel.get_distinct_id(),
+      user_id: user?.id,
+      payment_method: "Credit Card",
+      timestamp: Date.now(),
+    });
+
+    // NEW TRACKING CODE: Promo Code Applied
+    mixpanel.track("Promo Code Applied", {
+      cart_id: user?.id || mixpanel.get_distinct_id(),
+      user_id: user?.id,
+      promo_code: null, // Not available in current component state
+      discount_amount: null, // Not available in current component state
+      timestamp: Date.now(),
+    });
 
     try {
       // Simulate payment processing
@@ -62,7 +141,16 @@ export const Checkout: React.FC = () => {
         shippingAddress: shippingData,
       });
 
+      // Mixpanel Tracking: coupon_applied
+      mixpanel.track("coupon_applied", {
+        coupon_code: null, // Not available in current component state
+        discount_amount: null, // Not available in current component state
+        order_id: order.id, // Available after order creation
+        user_id: user?.id, // Include user_id for consistency
+      });
+
       clearCart();
+      checkoutCompletedRef.current = true; // Set ref to true indicating successful checkout
       
       toast({
         title: "Order placed successfully!",
@@ -77,6 +165,15 @@ export const Checkout: React.FC = () => {
         title: "Payment failed",
         description: "Please check your payment details and try again.",
         variant: "destructive",
+      });
+
+      // Mixpanel Tracking: Payment Failed
+      mixpanel.track("Payment Failed", {
+        cart_id: user?.id || mixpanel.get_distinct_id(),
+        user_id: user?.id,
+        payment_method: "Credit Card", // Assuming this form is exclusively for credit card payments
+        failure_reason: error instanceof Error ? error.message : 'Unknown payment error',
+        timestamp: Date.now(),
       });
     } finally {
       setLoading(false);

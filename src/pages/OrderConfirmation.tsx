@@ -1,9 +1,9 @@
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle, Package, Truck, Home } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import mixpanel from 'mixpanel-browser';
 
 export const OrderConfirmation: React.FC = () => {
   const location = useLocation();
@@ -15,6 +15,15 @@ export const OrderConfirmation: React.FC = () => {
     navigate('/');
     return null;
   }
+
+  useEffect(() => {
+    if (mixpanel && orderId) {
+      mixpanel.track('order_review_displayed', {
+        order_id: orderId,
+        total_amount: orderTotal,
+      });
+    }
+  }, []); // Empty dependency array to ensure this runs once when the component mounts
 
   return (
     <div className="container mx-auto px-4 py-16">
