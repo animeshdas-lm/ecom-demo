@@ -1,5 +1,5 @@
-
 import { Product, User, Order } from '../types';
+import mixpanel from "mixpanel-browser";
 
 export const mockProducts: Product[] = [
   {
@@ -139,7 +139,7 @@ export const mockApiService = {
 
   async createOrder(orderData: any): Promise<Order> {
     await delay(1000);
-    return {
+    const newOrder: Order = {
       id: `ORDER-${Date.now()}`,
       userId: mockUser.id,
       items: orderData.items,
@@ -148,5 +148,23 @@ export const mockApiService = {
       createdAt: new Date().toISOString(),
       shippingAddress: orderData.shippingAddress
     };
+
+    // Mixpanel tracking for order_placed event
+    mixpanel.track("order_placed", {
+      order_id: newOrder.id,
+      user_id: newOrder.userId,
+      total_amount: newOrder.total,
+    });
+
+    // Added Mixpanel tracking for "Order Placed" event
+    mixpanel.track("Order Placed", {
+      order_id: newOrder.id,
+      cart_id: null, // cart_id is not available in orderData or newOrder, setting to null
+      user_id: newOrder.userId,
+      total_amount: newOrder.total,
+      timestamp: newOrder.createdAt,
+    });
+
+    return newOrder;
   }
 };
