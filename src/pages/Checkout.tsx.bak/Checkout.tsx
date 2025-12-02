@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, Lock, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -12,7 +13,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { mockApiService } from '../services/mockData';
 import { useToast } from '../hooks/use-toast';
-import mixpanel from 'mixpanel-browser';
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -45,11 +45,6 @@ export const Checkout: React.FC = () => {
 
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Mixpanel tracking for shipping_info_added
-    mixpanel.track('shipping_info_added', {
-      shipping_address: `${shippingData.address}, ${shippingData.city}, ${shippingData.postalCode}, ${shippingData.country}`,
-      shipping_method: 'Standard Shipping' // Assuming a standard shipping method as there's no selection in the UI
-    });
     setStep(2);
   };
 
@@ -61,23 +56,10 @@ export const Checkout: React.FC = () => {
       // Simulate payment processing
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Mixpanel tracking for payment_info_added
-      mixpanel.track('payment_info_added', {
-        payment_method: 'Credit Card', // Assuming credit card as the payment method based on the form fields
-        billing_address: `${shippingData.address}, ${shippingData.city}, ${shippingData.postalCode}, ${shippingData.country}`
-      });
-
       const order = await mockApiService.createOrder({
         items,
         total,
         shippingAddress: shippingData,
-      });
-
-      // Mixpanel tracking for order_completed
-      mixpanel.track('order_completed', {
-        order_id: order.id,
-        order_total: total,
-        item_count: items.reduce((sum, item) => sum + item.quantity, 0)
       });
 
       clearCart();
@@ -95,11 +77,6 @@ export const Checkout: React.FC = () => {
         title: "Payment failed",
         description: "Please check your payment details and try again.",
         variant: "destructive",
-      });
-      // Mixpanel tracking for checkout_failed
-      mixpanel.track('checkout_failed', {
-        error_message: "Payment failed: Please check your payment details and try again.",
-        cart_total: total
       });
     } finally {
       setLoading(false);
@@ -121,14 +98,6 @@ export const Checkout: React.FC = () => {
       </div>
     );
   }
-
-  useEffect(() => {
-    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
-    mixpanel.track('checkout_started', {
-      cart_total: subtotal,
-      item_count: itemCount,
-    });
-  }, [items, subtotal]); // Added items and subtotal to dependency array for robustness, though for initial load empty array is fine.
 
   return (
     <div className="container mx-auto px-4 py-8">

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ShoppingCart, User, Search, Menu, X } from 'lucide-react';
@@ -8,7 +9,6 @@ import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { CartDrawer } from './CartDrawer';
 import { AuthDialog } from './AuthDialog';
-import mixpanel from 'mixpanel-browser';
 
 export const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -16,7 +16,7 @@ export const Header: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const { getTotalItems, cartItems } = useCart();
+  const { getTotalItems } = useCart();
   const { user, logout } = useAuth();
   const location = useLocation();
 
@@ -91,17 +91,7 @@ export const Header: React.FC = () => {
                 variant="ghost"
                 size="icon"
                 className="relative"
-                onClick={() => {
-                  const newCartOpenState = true;
-                  setIsCartOpen(newCartOpenState);
-                  if (newCartOpenState) {
-                    const cartTotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-                    mixpanel.track('cart_viewed', {
-                      cart_total: cartTotal,
-                      item_count: getTotalItems(),
-                    });
-                  }
-                }}
+                onClick={() => setIsCartOpen(true)}
               >
                 <ShoppingCart className="h-5 w-5" />
                 {getTotalItems() > 0 && (
